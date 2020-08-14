@@ -198,6 +198,7 @@ class GpuAssisted : public ValidationStateTracker {
                                          void* csm_state_data);
     void AnalyzeAndGenerateMessages(VkCommandBuffer command_buffer, VkQueue queue, VkPipelineBindPoint pipeline_bind_point,
                                     uint32_t operation_index, uint32_t* const debug_output_buffer);
+    void GpuAssisted::SetDescriptorInitialized(uint32_t *pData, uint32_t index, const cvdescriptorset::Descriptor *descriptor);
     void UpdateInstrumentationBuffer(CMD_BUFFER_STATE* cb_node);
     void PreCallRecordQueueSubmit(VkQueue queue, uint32_t submitCount, const VkSubmitInfo* pSubmits, VkFence fence);
     void PostCallRecordQueueSubmit(VkQueue queue, uint32_t submitCount, const VkSubmitInfo* pSubmits, VkFence fence,
