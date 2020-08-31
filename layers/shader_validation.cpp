@@ -879,6 +879,7 @@ static void IsSpecificDescriptorType(SHADER_MODULE_STATE const *module, const sp
             if (sampled == 2 && dim != spv::DimSubpassData) {
                 std::vector<unsigned> imagwrite_members;
                 std::vector<unsigned> atomic_members;
+                std::vector<std::pair<unsigned, unsigned>> sampledImage_members;
                 std::unordered_map<unsigned, unsigned> load_members;
                 std::unordered_map<unsigned, unsigned> accesschain_members;
                 std::unordered_map<unsigned, unsigned> image_texel_pointer_members;
@@ -889,6 +890,11 @@ static void IsSpecificDescriptorType(SHADER_MODULE_STATE const *module, const sp
                     switch (insn.opcode()) {
                         case spv::OpImageWrite: {
                             if (is_check_writable) imagwrite_members.emplace_back(insn.word(1));  // Load id
+                            break;
+                        }
+                        case spv::OpSampledImage: {
+                            // 3: image load id or AccessChain id, 4: sampler load id or AccessChain id,
+                            sampledImage_members.emplace_back(std::pair<unsigned, unsigned>(insn.word(3), insn.word(4)));
                             break;
                         }
                         case spv::OpLoad: {

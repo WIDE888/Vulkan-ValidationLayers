@@ -167,7 +167,23 @@ enum descriptor_req {
 
 extern unsigned DescriptorRequirementsBitsFromFormat(VkFormat fmt);
 
-typedef std::map<uint32_t, descriptor_req> BindingReqMap;
+struct SAMPLER_STATE;
+struct DescriptorReqirement {
+    descriptor_req reqs;
+    const SAMPLER_STATE* sampler_used_by_image;
+
+    DescriptorReqirement() : reqs(descriptor_req(0)), sampler_used_by_image(nullptr) {}
+};
+
+inline bool operator==(const DescriptorReqirement &a, const DescriptorReqirement &b) NOEXCEPT {
+    return a.reqs == b.reqs;
+}
+
+inline bool operator<(const DescriptorReqirement &a, const DescriptorReqirement &b) NOEXCEPT {
+    return a.reqs < b.reqs;
+}
+
+typedef std::map<uint32_t, DescriptorReqirement> BindingReqMap;
 
 struct DESCRIPTOR_POOL_STATE : BASE_NODE {
     VkDescriptorPool pool;
@@ -838,12 +854,16 @@ struct PIPELINE_LAYOUT_STATE : public BASE_NODE {
         compat_for_set.clear();
     }
 };
+
+typedef std::pair<unsigned, unsigned> descriptor_slot_t;
+
 // Shader typedefs needed to store StageStage below
 struct interface_var {
     uint32_t id;
     uint32_t type_id;
     uint32_t offset;
     int32_t input_index;  // index = -1 means that it's not input attachment.
+    descriptor_slot_t sampler_used_by_image;
     bool is_patch;
     bool is_block_member;
     bool is_relaxed_precision;
@@ -862,7 +882,6 @@ struct interface_var {
           is_writable(false),
           is_atomic_operation(false) {}
 };
-typedef std::pair<unsigned, unsigned> descriptor_slot_t;
 
 // Safe struct that spans NV and KHR VkRayTracingPipelineCreateInfo structures.
 // It is a safe_VkRayTracingPipelineCreateInfoKHR and supports construction from
@@ -1240,15 +1259,10 @@ struct CMD_BUFFER_STATE : public BASE_NODE {
     // Store last bound state for Gfx & Compute pipeline bind points
     std::map<uint32_t, LAST_BOUND_STATE> lastBound;
 
-    struct BindingInfo {
-        uint32_t binding;
-        descriptor_req requirements;
-    };
-
     struct CmdDrawDispatchInfo {
         CMD_TYPE cmd_type;
         std::string function;
-        std::vector<BindingInfo> binding_infos;
+        std::vector<std::pair<uint32_t, DescriptorReqirement>> binding_infos;
         VkFramebuffer framebuffer;
         std::vector<VkImageView> attachment_views;  // vector index is attachment index. If the value is VK_NULL_HANDLE(0),
                                                     // it means the attachment isn't used in this command.

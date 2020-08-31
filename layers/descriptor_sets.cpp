@@ -697,7 +697,7 @@ unsigned DescriptorRequirementsBitsFromFormat(VkFormat fmt) {
 //  This includes validating that all descriptors in the given bindings are updated,
 //  that any update buffers are valid, and that any dynamic offsets are within the bounds of their buffers.
 // Return true if state is acceptable, or false and write an error message into error string
-bool CoreChecks::ValidateDrawState(const DescriptorSet *descriptor_set, const std::map<uint32_t, descriptor_req> &bindings,
+bool CoreChecks::ValidateDrawState(const DescriptorSet *descriptor_set, const std::map<uint32_t, DescriptorReqirement> &bindings,
                                    const std::vector<uint32_t> &dynamic_offsets, const CMD_BUFFER_STATE *cb_node,
                                    const std::vector<VkImageView> &attachment_views, const char *caller,
                                    const DrawDispatchVuid &vuids) const {
@@ -721,15 +721,15 @@ bool CoreChecks::ValidateDrawState(const DescriptorSet *descriptor_set, const st
             // or the view could have been destroyed
             continue;
         }
-        result |= ValidateDescriptorSetBindingData(cb_node, descriptor_set, dynamic_offsets, binding, binding_pair.second,
-                                                   framebuffer, attachment_views, caller, vuids);
+        result |= ValidateDescriptorSetBindingData(cb_node, descriptor_set, dynamic_offsets, binding_pair, framebuffer,
+                                                   attachment_views, caller, vuids);
     }
     return result;
 }
 
 bool CoreChecks::ValidateDescriptorSetBindingData(const CMD_BUFFER_STATE *cb_node, const DescriptorSet *descriptor_set,
-                                                  const std::vector<uint32_t> &dynamic_offsets, uint32_t binding,
-                                                  descriptor_req reqs, VkFramebuffer framebuffer,
+                                                  const std::vector<uint32_t> &dynamic_offsets,
+                                                  std::pair<uint32_t, DescriptorReqirement> binding_info, VkFramebuffer framebuffer,
                                                   const std::vector<VkImageView> &attachment_views, const char *caller,
                                                   const DrawDispatchVuid &vuids) const {
     using DescriptorClass = cvdescriptorset::DescriptorClass;
@@ -739,6 +739,8 @@ bool CoreChecks::ValidateDescriptorSetBindingData(const CMD_BUFFER_STATE *cb_nod
     using SamplerDescriptor = cvdescriptorset::SamplerDescriptor;
     using TexelDescriptor = cvdescriptorset::TexelDescriptor;
     using AccelerationStructureDescriptor = cvdescriptorset::AccelerationStructureDescriptor;
+    const auto reqs = binding_info.second.reqs;
+    const auto binding = binding_info.first;
     DescriptorSetLayout::ConstBindingIterator binding_it(descriptor_set->GetLayout().get(), binding);
     {
         // Copy the range, the end range is subject to update based on variable length descriptor arrays.
@@ -843,6 +845,7 @@ bool CoreChecks::ValidateDescriptorSetBindingData(const CMD_BUFFER_STATE *cb_nod
                         image_view = image_descriptor->GetImageView();
                         image_view_state = image_descriptor->GetImageViewState();
                         image_layout = image_descriptor->GetImageLayout();
+                        sampler_state = binding_info.second.sampler_used_by_image;
                     }
 
                     if (image_view) {
@@ -1515,7 +1518,7 @@ void cvdescriptorset::DescriptorSet::PerformCopyUpdate(ValidationStateTracker *d
 //   to be used in a draw by the given cb_node
 void cvdescriptorset::DescriptorSet::UpdateDrawState(ValidationStateTracker *device_data, CMD_BUFFER_STATE *cb_node,
                                                      CMD_TYPE cmd_type, const PIPELINE_STATE *pipe,
-                                                     const std::map<uint32_t, descriptor_req> &binding_req_map,
+                                                     const std::map<uint32_t, DescriptorReqirement> &binding_req_map,
                                                      const char *function) {
     if (!device_data->disabled[command_buffer_state] && !IsPushDescriptor()) {
         // bind cb to this descriptor set
@@ -1546,10 +1549,7 @@ void cvdescriptorset::DescriptorSet::UpdateDrawState(ValidationStateTracker *dev
         auto flags = p_layout_->GetDescriptorBindingFlagsFromIndex(index);
         if (flags & (VK_DESCRIPTOR_BINDING_PARTIALLY_BOUND_BIT_EXT | VK_DESCRIPTOR_BINDING_UPDATE_AFTER_BIND_BIT_EXT)) {
             if (!(flags & VK_DESCRIPTOR_BINDING_PARTIALLY_BOUND_BIT_EXT)) {
-                CMD_BUFFER_STATE::BindingInfo binding_info;
-                binding_info.binding = binding;
-                binding_info.requirements = binding_req_pair.second;
-                cmd_info.binding_infos.emplace_back(binding_info);
+                cmd_info.binding_infos.emplace_back(binding_req_pair);
             }
             continue;
         }
@@ -2733,7 +2733,7 @@ bool CoreChecks::ValidateAllocateDescriptorSets(const VkDescriptorSetAllocateInf
 const BindingReqMap &cvdescriptorset::PrefilterBindRequestMap::FilteredMap(const CMD_BUFFER_STATE &cb_state,
                                                                            const PIPELINE_STATE &pipeline) {
     if (IsManyDescriptors()) {
-        filtered_map_.reset(new std::map<uint32_t, descriptor_req>());
+        filtered_map_.reset(new std::map<uint32_t, DescriptorReqirement>());
         descriptor_set_.FilterBindingReqs(cb_state, pipeline, orig_map_, filtered_map_.get());
         return *filtered_map_;
     }
